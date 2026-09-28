@@ -1,0 +1,261 @@
+const mqtt = require('mqtt');
+const { pool } = require('./database');
+const { broadcastWs } = require('./websocket');
+const { formatDateTime, pad } = require('../utils/timeUtils');
+
+let mqttClient = null;
+let isMqttBrokerConnected = false;
+let lastMqttReceived = 0;
+
+// Bộ nhớ đệm lưu giá trị cảm biến thời gian thực mới nhất
+const currentSensors = {
+  temperature: 21.4,
+  humidity: 55.0,
+  light: 800
+};
+
+function isEspOnline() {
+  return isMqttBrokerConnected && lastMqttReceived > 0 && (Date.now() - lastMqttReceived < 4500);
+}
+
+function getMqttStatus() {
+  return {
+    mqtt_connected: isMqttBrokerConnected,
+    esp_online: isEspOnline(),
+    current_sensors: { ...currentSensors },
+    last_received: lastMqttReceived
+  };
+}
+
+function initMqtt() {
+  const host = process.env.MQTT_HOST || 'localhost';
+  const port = parseInt(process.env.MQTT_PORT, 10) || 6767;
+  const username = process.env.MQTT_USER || 'nguyenducmanh';
+  const password = process.env.MQTT_PASSWORD || 'B23DCCN532';
+  const clientId = `iot_backend_${Math.random().toString(16).substring(2, 8)}`;
+
+  try {
+    mqttClient = mqtt.connect(`mqtt://${host}:${port}`, {
+      username,
+      password,
+      clientId,
+      connectTimeout: 5000,
+      reconnectPeriod: 3000
+    });
+
+    mqttClient.on('connect', () => {
+      isMqttBrokerConnected = true;
+      console.log(`✅ [MQTT] Đã kết nối Broker thành công tại: mqtt://${host}:${port} (User: ${username})`);
+      broadcastWs('MQTT_STATUS', { mqtt_connected: true, esp_online: isEspOnline() });
+
+      // Đăng ký toàn bộ topic
+      mqttClient.subscribe('#', (err) => {
+        if (!err) {
+          console.log('📡 [MQTT] Đã đăng ký lắng nghe toàn bộ topic (#)');
+        }
+      });
+    });
+
+    mqttClient.on('close', () => {
+      if (isMqttBrokerConnected) {
+        isMqttBrokerConnected = false;
+        console.warn('⚠️ [MQTT] Mất kết nối tới Broker!');
+        broadcastWs('MQTT_STATUS', { mqtt_connected: false, esp_online: false });
+      }
+    });
+
+    mqttClient.on('offline', () => {
+      if (isMqttBrokerConnected) {
+        isMqttBrokerConnected = false;
+        console.warn('⚠️ [MQTT] Broker offline!');
+        broadcastWs('MQTT_STATUS', { mqtt_connected: false, esp_online: false });
+      }
+    });
+
+    mqttClient.on('error', (err) => {
+      isMqttBrokerConnected = false;
+      console.warn(`⚠️ [MQTT] Broker port ${port}: ${err.message}`);
+      broadcastWs('MQTT_STATUS', { mqtt_connected: false, esp_online: false });
+    });
+
+    // Watchdog kiểm tra trạng thái ESP8266 Online/Offline mỗi giây
+    let prevEspOnline = false;
+    setInterval(() => {
+      const currentOnline = isEspOnline();
+      if (currentOnline !== prevEspOnline) {
+        prevEspOnline = currentOnline;
+        broadcastWs('MQTT_STATUS', {
+          mqtt_connected: isMqttBrokerConnected,
+          esp_online: currentOnline
+        });
+      }
+    }, 1000);
+
+    // Lắng nghe và xử lý toàn bộ bản tin nhận từ Broker
+    mqttClient.on('message', async (topic, message) => {
+      try {
+        const raw = message.toString();
+        let data = {};
+        try {
+          data = JSON.parse(raw);
+        } catch (e) {
+          return;
+        }
+
+        // 1. Xử lý bản tin phản hồi (ACK) từ ESP8266 khi nhận lệnh điều khiển
+        if (topic === 'iot/devices/response') {
+          console.log(`📥 [MQTT ➔ Server] ESP8266 phản hồi ACK: Request ${data.request_id} | Status: ${data.status} | Pin: ${data.pin} | State: ${data.state}`);
+          const ackStatus = data.status === 'SUCCESS' ? 'SUCCESS' : 'FAILED';
+
+          if (data.request_id && pool) {
+            try {
+              await pool.query('UPDATE action SET status = ? WHERE request_id = ?', [ackStatus, data.request_id]);
+              if (data.device_id && data.status === 'SUCCESS' && (data.state === 'ON' || data.state === 'OFF')) {
+                await pool.query('UPDATE devices SET current_state = ? WHERE id = ?', [data.state, data.device_id]);
+              }
+            } catch (dbErr) {
+              console.error('❌ [Database] Lỗi cập nhật ACK:', dbErr.message);
+            }
+          }
+
+          broadcastWs('DEVICE_STATUS', {
+            request_id: data.request_id,
+            device_id: data.device_id,
+            status: ackStatus,
+            state: data.state
+          });
+          return;
+        }
+
+        if (topic === 'iot/devices/control') {
+          return; // Bỏ qua topic phát lệnh
+        }
+
+        // 2. Xử lý bản tin dữ liệu đo từ cảm biến (topic: iot/sensors/data hoặc tương tự)
+        let temp = data.temperature ?? data.temp;
+        let humi = data.humidity ?? data.humi;
+        let light = data.light ?? data.lux;
+
+        if (Array.isArray(data.readings)) {
+          data.readings.forEach(r => {
+            const st = (r.sensor_type || '').toUpperCase();
+            if (st === 'TEMP' || st === 'TEMPERATURE') temp = r.value;
+            if (st === 'HUMI' || st === 'HUMIDITY') humi = r.value;
+            if (st === 'LIGHT' || st === 'LUX') light = r.value;
+          });
+        }
+
+        if (temp === undefined && humi === undefined && light === undefined) {
+          return;
+        }
+
+        // Lưu đúng mốc thời gian thực tế tự nhiên lúc nhận tin (hoặc timestamp của thiết bị nếu có)
+        const now = (data.timestamp && !isNaN(new Date(data.timestamp).getTime())) 
+          ? new Date(data.timestamp) 
+          : new Date();
+        lastMqttReceived = Date.now();
+
+        if (temp !== undefined) currentSensors.temperature = parseFloat(temp);
+        if (humi !== undefined) currentSensors.humidity = parseFloat(humi);
+        if (light !== undefined) currentSensors.light = Math.round(parseFloat(light));
+
+        const formattedTime = formatDateTime(now);
+        const newRecords = [];
+
+        if (pool) {
+          if (temp !== undefined) {
+            const [resTemp] = await pool.query(
+              `INSERT INTO dataSensors (device_id, sensor_id, sensor_code, sensor_name, sensor_type, value, unit, recorded_at)
+               VALUES (1, 1, '#TEMP-01', 'Nhiệt độ', 'temperature', ?, '°C', ?)`,
+              [temp, now]
+            );
+            newRecords.push({
+              id: resTemp.insertId,
+              stt: resTemp.insertId,
+              sensor_id: '#TEMP-01',
+              sensor_name: 'Nhiệt độ',
+              sensor_type: 'temperature',
+              value: parseFloat(temp),
+              unit: '°C',
+              recorded_at: formattedTime
+            });
+          }
+
+          if (humi !== undefined) {
+            const [resHumi] = await pool.query(
+              `INSERT INTO dataSensors (device_id, sensor_id, sensor_code, sensor_name, sensor_type, value, unit, recorded_at)
+               VALUES (1, 2, '#HUMI-01', 'Độ ẩm', 'humidity', ?, '%', ?)`,
+              [humi, now]
+            );
+            newRecords.push({
+              id: resHumi.insertId,
+              stt: resHumi.insertId,
+              sensor_id: '#HUMI-01',
+              sensor_name: 'Độ ẩm',
+              sensor_type: 'humidity',
+              value: parseFloat(humi),
+              unit: '%',
+              recorded_at: formattedTime
+            });
+          }
+
+          if (light !== undefined) {
+            const [resLight] = await pool.query(
+              `INSERT INTO dataSensors (device_id, sensor_id, sensor_code, sensor_name, sensor_type, value, unit, recorded_at)
+               VALUES (1, 3, '#LIGHT-01', 'Ánh sáng', 'light', ?, 'lux', ?)`,
+              [light, now]
+            );
+            newRecords.push({
+              id: resLight.insertId,
+              stt: resLight.insertId,
+              sensor_id: '#LIGHT-01',
+              sensor_name: 'Ánh sáng',
+              sensor_type: 'light',
+              value: Math.round(parseFloat(light)),
+              unit: 'lux',
+              recorded_at: formattedTime
+            });
+          }
+        }
+
+        // Bắn WebSocket Realtime tới toàn bộ client giao diện
+        broadcastWs('SENSOR_UPDATE', {
+          temperature: { value: parseFloat(temp), unit: '°C' },
+          humidity: { value: parseFloat(humi), unit: '%' },
+          light: { value: Math.round(parseFloat(light)), unit: 'Lux' },
+          records: newRecords,
+          timestamp: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
+        });
+
+        console.log(`📥 [MQTT ➔ MySQL ➔ WebSocket] Nhận từ ESP8266: Nhiệt độ ${temp}°C | Độ ẩm ${humi}% | Ánh sáng ${light} Lux ➔ Đã lưu & phát WebSocket!`);
+      } catch (err) {
+        console.error('❌ [MQTT] Lỗi xử lý bản tin cảm biến:', err.message);
+      }
+    });
+  } catch (e) {
+    console.error('❌ [MQTT] Lỗi khởi tạo MQTT Client:', e.message);
+  }
+
+  return mqttClient;
+}
+
+function publishMessage(topic, payload, qos = 1) {
+  return new Promise((resolve, reject) => {
+    if (!mqttClient || !isMqttBrokerConnected) {
+      return reject(new Error('MQTT Broker chưa sẵn sàng kết nối'));
+    }
+    const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    mqttClient.publish(topic, message, { qos }, (err) => {
+      if (err) return reject(err);
+      resolve(true);
+    });
+  });
+}
+
+module.exports = {
+  initMqtt,
+  getMqttStatus,
+  isEspOnline,
+  currentSensors,
+  publishMessage
+};
