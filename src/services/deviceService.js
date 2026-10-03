@@ -1,6 +1,5 @@
 const { pool } = require('../config/database');
 const { publishMessage } = require('../config/mqtt');
-const { broadcastWs } = require('../config/websocket');
 const { formatDateTime } = require('../utils/timeUtils');
 
 async function getAllDevices() {
@@ -61,27 +60,28 @@ async function controlDevice(deviceId, action, operator = 'Nguyễn Đức Mạn
     console.warn('⚠️ [MQTT] Không thể gửi lệnh tới Broker:', err.message);
   }
 
-  // 4. Phát sự kiện DEVICE_ACTION qua WebSocket tới các trang đang mở
-  const formattedActTime = formatDateTime(now);
-  broadcastWs('DEVICE_ACTION', {
-    id: Date.now(),
-    stt: Date.now(),
-    device_id: dev.device_code,
-    device_name: dev.name,
-    device_type: dev.type,
-    operator: operator,
-    action: action,
-    status: 'SUCCESS',
-    created_at: formattedActTime,
-    request_id: requestId
-  });
+  // 4. Cơ chế chống kẹt lệnh (Action Timeout): Nếu sau 5 giây không nhận được ACK từ phần cứng -> Ghi nhận FAILED
+  setTimeout(async () => {
+    try {
+      const [pendingRows] = await pool.query(
+        "SELECT id, status FROM action WHERE request_id = ? AND status = 'PENDING'",
+        [requestId]
+      );
+      if (pendingRows.length > 0) {
+        await pool.query("UPDATE action SET status = 'FAILED' WHERE request_id = ?", [requestId]);
+        console.warn(`⏰ [Action Timeout] Request ${requestId} hết hạn 5s không nhận được ACK từ phần cứng -> Đã ghi nhận FAILED`);
+      }
+    } catch (e) {
+      console.error('❌ [Action Timeout Error]:', e.message);
+    }
+  }, 5000);
 
   return {
     action_id: requestId,
     device_id: devId,
     action: action,
-    state: 'SUCCESS',
-    message: `Thiết bị ${dev.name} đã được chuyển sang trạng thái ${action}`
+    status: 'PENDING',
+    message: `Đang gửi lệnh ${action} tới thiết bị ${dev.name}...`
   };
 }
 

@@ -232,9 +232,9 @@ function changeHistoryLimit(limit) {
 }
 
 // Gọi API lấy nhật ký thao tác thiết bị từ Backend Server
-async function fetchHistoryFromServer() {
+async function fetchHistoryFromServer(isSilent = false) {
   const tbody = document.getElementById('history-table-body');
-  if (tbody) {
+  if (!isSilent && tbody) {
     tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400">Đang tải nhật ký từ máy chủ http://localhost:5000...</td></tr>`;
   }
 
@@ -242,36 +242,30 @@ async function fetchHistoryFromServer() {
     const res = await apiFetch('/api/v1/actions/history');
     if (res.status === 'success' && Array.isArray(res.data)) {
       allHistoryRecords = res.data;
-      filteredHistory = [...allHistoryRecords];
-      applyHistorySorting();
-      renderHistoryTable();
+      if (!isSilent) {
+        filteredHistory = [...allHistoryRecords];
+        applyHistorySorting();
+        renderHistoryTable();
+      } else {
+        // Cập nhật lại kết quả lọc nhưng BẢO LƯU trang và bộ lọc hiện tại của người dùng
+        handleHistoryFilter(null, true);
+      }
     }
   } catch (err) {
-    if (tbody) {
+    if (!isSilent && tbody) {
       tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-rose-500 font-semibold">⚠️ Không thể kết nối tới Backend Server (http://localhost:5000)! Vui lòng bật server bằng lệnh: <code class="bg-rose-50 px-2 py-0.5 rounded border border-rose-200">node server.js</code></td></tr>`;
     }
     const countEl = document.getElementById('total-history-count');
-    if (countEl) countEl.textContent = '0';
+    if (!isSilent && countEl) countEl.textContent = '0';
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   updateHistorySortIcons();
-  fetchHistoryFromServer();
+  fetchHistoryFromServer(false);
 
-  // Lắng nghe thao tác bật/tắt thiết bị thời gian thực qua WebSocket
-  if (typeof initIotWebSocket === 'function') {
-    initIotWebSocket((msg) => {
-      if (msg.type === 'DEVICE_ACTION') {
-        allHistoryRecords.unshift(msg);
-        handleHistoryFilter(null, true);
-      } else if (msg.type === 'DEVICE_STATUS') {
-        const item = allHistoryRecords.find(r => r.request_id === msg.request_id);
-        if (item) {
-          item.status = msg.status;
-          renderHistoryTable();
-        }
-      }
-    });
-  }
+  // Polling RESTful định kỳ mỗi 2 giây để đồng bộ nhật ký thao tác mới nhất từ MySQL
+  setInterval(() => {
+    fetchHistoryFromServer(true);
+  }, 2000);
 });

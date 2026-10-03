@@ -1,6 +1,5 @@
 const mqtt = require('mqtt');
 const { pool } = require('./database');
-const { broadcastWs } = require('./websocket');
 const { formatDateTime, pad } = require('../utils/timeUtils');
 
 let mqttClient = null;
@@ -46,7 +45,6 @@ function initMqtt() {
     mqttClient.on('connect', () => {
       isMqttBrokerConnected = true;
       console.log(`✅ [MQTT] Đã kết nối Broker thành công tại: mqtt://${host}:${port} (User: ${username})`);
-      broadcastWs('MQTT_STATUS', { mqtt_connected: true, esp_online: isEspOnline() });
 
       // Đăng ký toàn bộ topic
       mqttClient.subscribe('#', (err) => {
@@ -60,7 +58,6 @@ function initMqtt() {
       if (isMqttBrokerConnected) {
         isMqttBrokerConnected = false;
         console.warn('⚠️ [MQTT] Mất kết nối tới Broker!');
-        broadcastWs('MQTT_STATUS', { mqtt_connected: false, esp_online: false });
       }
     });
 
@@ -68,28 +65,13 @@ function initMqtt() {
       if (isMqttBrokerConnected) {
         isMqttBrokerConnected = false;
         console.warn('⚠️ [MQTT] Broker offline!');
-        broadcastWs('MQTT_STATUS', { mqtt_connected: false, esp_online: false });
       }
     });
 
     mqttClient.on('error', (err) => {
       isMqttBrokerConnected = false;
       console.warn(`⚠️ [MQTT] Broker port ${port}: ${err.message}`);
-      broadcastWs('MQTT_STATUS', { mqtt_connected: false, esp_online: false });
     });
-
-    // Watchdog kiểm tra trạng thái ESP8266 Online/Offline mỗi giây
-    let prevEspOnline = false;
-    setInterval(() => {
-      const currentOnline = isEspOnline();
-      if (currentOnline !== prevEspOnline) {
-        prevEspOnline = currentOnline;
-        broadcastWs('MQTT_STATUS', {
-          mqtt_connected: isMqttBrokerConnected,
-          esp_online: currentOnline
-        });
-      }
-    }, 1000);
 
     // Lắng nghe và xử lý toàn bộ bản tin nhận từ Broker
     mqttClient.on('message', async (topic, message) => {
@@ -117,13 +99,6 @@ function initMqtt() {
               console.error('❌ [Database] Lỗi cập nhật ACK:', dbErr.message);
             }
           }
-
-          broadcastWs('DEVICE_STATUS', {
-            request_id: data.request_id,
-            device_id: data.device_id,
-            status: ackStatus,
-            state: data.state
-          });
           return;
         }
 
@@ -218,16 +193,7 @@ function initMqtt() {
           }
         }
 
-        // Bắn WebSocket Realtime tới toàn bộ client giao diện
-        broadcastWs('SENSOR_UPDATE', {
-          temperature: { value: parseFloat(temp), unit: '°C' },
-          humidity: { value: parseFloat(humi), unit: '%' },
-          light: { value: Math.round(parseFloat(light)), unit: 'Lux' },
-          records: newRecords,
-          timestamp: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-        });
-
-        console.log(`📥 [MQTT ➔ MySQL ➔ WebSocket] Nhận từ ESP8266: Nhiệt độ ${temp}°C | Độ ẩm ${humi}% | Ánh sáng ${light} Lux ➔ Đã lưu & phát WebSocket!`);
+        console.log(`📥 [MQTT ➔ MySQL] Nhận từ ESP8266: Nhiệt độ ${temp}°C | Độ ẩm ${humi}% | Ánh sáng ${light} Lux ➔ Đã lưu thành công vào MySQL!`);
       } catch (err) {
         console.error('❌ [MQTT] Lỗi xử lý bản tin cảm biến:', err.message);
       }

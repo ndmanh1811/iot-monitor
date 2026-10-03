@@ -30,117 +30,48 @@ async function apiFetch(endpoint, options = {}) {
 }
 
 // =====================================================
-// KẾT NỐI WEBSOCKET REALTIME TỚI BACKEND
+// QUẢN LÝ TRẠNG THÁI KẾT NỐI RESTFUL API POLLING (CHU KỲ 2S)
 // =====================================================
 
-function getWebSocketUrl() {
-  const httpUrl = new URL(API_CONFIG.BASE_URL);
-  const protocol = httpUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${httpUrl.host}`;
+let isBackendConnected = true;
+
+function updateApiStatusBadge(connected, text) {
+  isBackendConnected = connected;
+  const badge = document.getElementById('api-status-badge');
+  if (badge) {
+    if (connected) {
+      badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-200';
+      badge.innerHTML = `
+        <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+        <span>${text || 'REST API: Đồng bộ (2s)'}</span>
+      `;
+    } else {
+      badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-600 border border-rose-200';
+      badge.innerHTML = `
+        <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+        <span>${text || 'REST API: Mất kết nối'}</span>
+      `;
+    }
+  }
 }
 
-// Quản lý trạng thái kết nối WebSocket và các sự kiện Online/Offline
-const IOT_WS_EVENTS = {
-  listeners: [],
-  isConnected: false,
-  subscribe(fn) {
-    if (typeof fn === 'function') {
-      this.listeners.push(fn);
-      fn(this.isConnected);
-    }
-  },
-  emit(connected) {
-    if (this.isConnected !== connected) {
-      this.isConnected = connected;
-      this.listeners.forEach(fn => {
-        try { fn(connected); } catch (e) {}
-      });
-    }
-  }
-};
-
-function initIotWebSocket(onMessage, onStatusChange) {
-  let ws = null;
-  let reconnectTimer = null;
-
-  if (typeof onStatusChange === 'function') {
-    IOT_WS_EVENTS.subscribe(onStatusChange);
-  }
-
-  function connect() {
-    try {
-      ws = new WebSocket(getWebSocketUrl());
-
-      ws.onopen = () => {
-        console.log('⚡ [WebSocket] Đã kết nối thời gian thực tới Backend Server!');
-        IOT_WS_EVENTS.emit(true);
-
-        const badge = document.getElementById('ws-status-badge');
-        if (badge) {
-          badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-200';
-          badge.innerHTML = `
-            <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-            <span>WebSocket: Đã kết nối</span>
-          `;
-        }
-        const espBadge = document.getElementById('esp-status-badge');
-        if (espBadge) {
-          espBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200';
-          espBadge.innerHTML = `
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>ESP8266 Online (MQTT)</span>
-          `;
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          if (typeof onMessage === 'function') {
-            onMessage(payload);
-          }
-        } catch (e) {
-          console.error('[WebSocket] Lỗi parse payload:', e);
-        }
-      };
-
-      ws.onclose = () => {
-        IOT_WS_EVENTS.emit(false);
-
-        const badge = document.getElementById('ws-status-badge');
-        if (badge) {
-          badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-600 border border-rose-200';
-          badge.innerHTML = `
-            <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-            <span>WebSocket: Mất kết nối</span>
-          `;
-        }
-        const espBadge = document.getElementById('esp-status-badge');
-        if (espBadge) {
-          espBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-600 border border-rose-200';
-          espBadge.innerHTML = `
-            <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-            <span>ESP8266 Offline</span>
-          `;
-        }
-        clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(connect, 3000);
-      };
-
-      ws.onerror = () => {
-        ws.close();
-      };
-    } catch (err) {
-      IOT_WS_EVENTS.emit(false);
-      clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(connect, 3000);
+function updateEspStatusBadge(online) {
+  const espBadge = document.getElementById('esp-status-badge');
+  if (espBadge) {
+    if (online) {
+      espBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200';
+      espBadge.innerHTML = `
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span>ESP8266 Online (MQTT)</span>
+      `;
+    } else {
+      espBadge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-600 border border-rose-200';
+      espBadge.innerHTML = `
+        <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+        <span>ESP8266 Offline</span>
+      `;
     }
   }
-
-  connect();
-  return {
-    getSocket: () => ws
-  };
 }
 
 // =====================================================

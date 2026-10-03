@@ -397,9 +397,9 @@ function changeLimit(newLimit) {
 }
 
 // Gọi API lấy dữ liệu từ Backend Server
-async function fetchSensorDataFromServer() {
+async function fetchSensorDataFromServer(isSilent = false) {
   const tbody = document.getElementById('sensor-table-body');
-  if (tbody) {
+  if (!isSilent && tbody) {
     tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-slate-400">Đang tải dữ liệu từ máy chủ http://localhost:5000...</td></tr>`;
   }
 
@@ -407,36 +407,31 @@ async function fetchSensorDataFromServer() {
     const res = await apiFetch('/api/v1/sensors/data');
     if (res.status === 'success' && Array.isArray(res.data)) {
       allSensorRecords = res.data;
-      filteredRecords = [...allSensorRecords];
-      applySorting();
-      renderSensorTable();
+      if (!isSilent) {
+        filteredRecords = [...allSensorRecords];
+        applySorting();
+        renderSensorTable();
+      } else {
+        // Cập nhật lại kết quả lọc nhưng BẢO LƯU số trang và vị trí hiện tại của người dùng
+        handleFilterSubmit(null, true);
+      }
     }
   } catch (err) {
-    if (tbody) {
+    if (!isSilent && tbody) {
       tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-rose-500 font-semibold">⚠️ Không thể kết nối tới Backend Server (http://localhost:5000)! Vui lòng bật server bằng lệnh: <code class="bg-rose-50 px-2 py-0.5 rounded border border-rose-200">node server.js</code></td></tr>`;
     }
     const countEl = document.getElementById('total-records-count');
-    if (countEl) countEl.textContent = '0';
+    if (!isSilent && countEl) countEl.textContent = '0';
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   handleFilterTypeChange();
   updateSortIcons();
-  fetchSensorDataFromServer();
+  fetchSensorDataFromServer(false);
 
-  // Lắng nghe dữ liệu cảm biến mới qua WebSocket Realtime
-  if (typeof initIotWebSocket === 'function') {
-    initIotWebSocket((msg) => {
-      if (msg.type === 'SENSOR_UPDATE' && Array.isArray(msg.records) && msg.records.length > 0) {
-        const existingIds = new Set(allSensorRecords.map(r => r.id || r.stt));
-        const toAdd = msg.records.filter(r => !existingIds.has(r.id || r.stt));
-        if (toAdd.length > 0) {
-          allSensorRecords.unshift(...toAdd);
-          // Tự động cập nhật bảng nhưng BẢO LƯU trang hiện tại của người dùng
-          handleFilterSubmit(null, true);
-        }
-      }
-    });
-  }
+  // Polling RESTful định kỳ mỗi 2 giây để đồng bộ dữ liệu cảm biến mới từ MySQL
+  setInterval(() => {
+    fetchSensorDataFromServer(true);
+  }, 2000);
 });

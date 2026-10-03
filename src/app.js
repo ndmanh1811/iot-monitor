@@ -29,7 +29,7 @@ app.get('/', (req, res) => {
     status: 'success',
     message: '🚀 IoT Central Backend Server (Enterprise Layered Architecture) đang hoạt động!',
     author: 'Nguyễn Đức Mạnh - B23DCCN532 - Lớp B23CNPM06',
-    architecture: 'Express.js + MySQL Pool + Mosquitto MQTT + WebSocket Realtime',
+    architecture: 'Express.js + MySQL Pool + Mosquitto MQTT + RESTful HTTP Polling (Chu kỳ 2s)',
     database: `MySQL (${process.env.DB_NAME || 'iot_monitor'})`,
     mqtt_broker: `mqtt://${mqttHost}:${mqttPort}`,
     available_endpoints: [

@@ -545,17 +545,11 @@ async function fetchRealtimeSensors(isInitial = false) {
           try {
             localStorage.setItem('iot_cached_chart', JSON.stringify(chartData));
           } catch (e) {}
-        } else if (chartData.temp.length > 0) {
-          chartData.temp[chartData.temp.length - 1] = t;
-          chartData.humi[chartData.humi.length - 1] = h;
-          chartData.light[chartData.light.length - 1] = l;
-          if (sensorChart) {
-            sensorChart.updateSeries([
-              { name: 'Nhiệt độ (°C)', data: [...chartData.temp] },
-              { name: 'Độ ẩm (%)', data: [...chartData.humi] },
-              { name: 'Ánh sáng (lux)', data: [...chartData.light] }
-            ], false);
-          }
+        }
+      } else {
+        // Chu kỳ Polling 2s tiếp theo: Đẩy điểm mới nhất vào biểu đồ và cập nhật thẻ số liệu
+        if (t !== null && h !== null && l !== null) {
+          updateSensorChart(t, h, l);
         }
       }
     }
@@ -572,7 +566,7 @@ async function fetchRealtimeSensors(isInitial = false) {
 
 let isDashboardCurrentlyOffline = false;
 let offlineGraceTimer = null;
-const OFFLINE_GRACE_PERIOD_MS = 3000; // 3 giây: Độ trễ phát hiện mất kết nối WebSocket
+const OFFLINE_GRACE_PERIOD_MS = 3000; // 3 giây: Độ trễ phát hiện mất kết nối REST API
 let lastSensorDataTime = Date.now();
 const SENSOR_WATCHDOG_TIMEOUT_MS = 4500; // 4.5 giây: Quá 2 chu kỳ đo không có dữ liệu mới
 
@@ -768,15 +762,40 @@ async function toggleDevice(deviceId, currentStatus, btnElement) {
     });
 
     if (res.status === 'success') {
-      setTimeout(() => {
-        btnElement.disabled = false;
-        applyDeviceStateUI(deviceId, newAction, true);
+      // Cơ chế RESTful Polling: Thăm dò trạng thái thiết bị sau khi nhận ACK từ phần cứng
+      let pollCount = 0;
+      const maxPolls = 10; // Tối đa 5 giây (mỗi 500ms một lần)
+      const pollTimer = setInterval(async () => {
+        pollCount++;
         try {
-          const cached = JSON.parse(localStorage.getItem('iot_devices_state') || '{}');
-          cached[deviceId] = newAction;
-          localStorage.setItem('iot_devices_state', JSON.stringify(cached));
+          const devRes = await apiFetch('/api/v1/devices');
+          if (devRes.status === 'success' && Array.isArray(devRes.data)) {
+            const dev = devRes.data.find(d => d.id === parseInt(deviceId, 10));
+            if (dev && dev.status === newAction) {
+              clearInterval(pollTimer);
+              btnElement.disabled = false;
+              applyDeviceStateUI(deviceId, newAction, true);
+              try {
+                const cached = JSON.parse(localStorage.getItem('iot_devices_state') || '{}');
+                cached[deviceId] = newAction;
+                localStorage.setItem('iot_devices_state', JSON.stringify(cached));
+              } catch (e) {}
+              return;
+            }
+          }
         } catch (e) {}
-      }, 400);
+
+        if (pollCount >= maxPolls) {
+          clearInterval(pollTimer);
+          btnElement.disabled = false;
+          applyDeviceStateUI(deviceId, currentStatus, true);
+          if (statusBadge) {
+            statusBadge.className = `inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${APP_COLORS.status.failed.badge}`;
+            statusBadge.textContent = 'Hết hạn phản hồi (FAILED)';
+          }
+          alert(`Thiết bị ${deviceId} không phản hồi trong 5 giây! Lệnh bị hủy.`);
+        }
+      }, 500);
     } else {
       throw new Error(res.message);
     }
@@ -791,9 +810,7 @@ async function toggleDevice(deviceId, currentStatus, btnElement) {
   }
 }
 
-let lastWsSensorUpdate = 0;
-
-// Khởi chạy khi DOM sẵn sàng
+// Khởi chạy khi DOM sẵn sàng (100% Pure RESTful HTTP Polling)
 document.addEventListener('DOMContentLoaded', () => {
   // 1. Đồng bộ tức thì từ cache để triệt tiêu hoàn toàn hiện tượng nháy công tắc khi load lại trang
   try {
@@ -807,60 +824,27 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch (e) {}
 
   initChart();
-  fetchRealtimeSensors(true); // Lần đầu: cập nhật chỉ số ngay lập tức mà không đẩy lùi trục thời gian
+  fetchRealtimeSensors(true); // Lần đầu: nạp 8 điểm dữ liệu từ MySQL vào biểu đồ
   syncDevicesFromServer(false); // Không chạy animation khi nạp trang lần đầu
 
-  // Kết nối WebSocket Realtime trực tiếp với Backend
-  if (typeof initIotWebSocket === 'function') {
-    initIotWebSocket((msg) => {
-      if (msg.type === 'SENSOR_UPDATE') {
-        lastWsSensorUpdate = Date.now();
-        lastSensorDataTime = Date.now();
-        clearTimeout(offlineGraceTimer);
-        setDashboardOnlineState();
+  // 2. VÒNG LẶP POLLING RESTFUL ĐỊNH KỲ 2 GIÂY/LẦN (ĐỒNG BỘ CHU KỲ PHẦN CỨNG 2S)
+  setInterval(() => {
+    fetchRealtimeSensors(false);
+  }, 2000);
 
-        const t = msg.temperature?.value;
-        const h = msg.humidity?.value;
-        const l = msg.light?.value;
-        if (t !== undefined && h !== undefined && l !== undefined) {
-          updateSensorChart(t, h, l, msg.timestamp);
-        }
-      } else if (msg.type === 'MQTT_STATUS') {
-        if (!msg.esp_online || !msg.mqtt_connected) {
-          setDashboardOfflineState();
-        } else {
-          setDashboardOnlineState();
-        }
-      } else if (msg.type === 'DEVICE_STATUS' || msg.type === 'DEVICE_CONTROL') {
-        syncDevicesFromServer(true);
-      }
-    }, (isConnected) => {
-      if (isConnected) {
-        clearTimeout(offlineGraceTimer);
-        setDashboardOnlineState();
-      } else {
-        // WebSocket ngắt kết nối: Chờ đúng 3 giây, nếu không phục hồi thì báo Mất kết nối
-        clearTimeout(offlineGraceTimer);
-        offlineGraceTimer = setTimeout(() => {
-          setDashboardOfflineState();
-        }, OFFLINE_GRACE_PERIOD_MS);
-      }
-    });
-  }
-
-  // Watchdog kiểm tra dữ liệu cảm biến (nếu quá 5 giây không có bản tin đo mới -> báo Mất kết nối)
+  // 3. Watchdog kiểm tra dữ liệu cảm biến (quá 5 giây không có dữ liệu -> báo Mất kết nối)
   setInterval(() => {
     if (Date.now() - lastSensorDataTime > SENSOR_WATCHDOG_TIMEOUT_MS) {
       setDashboardOfflineState();
     }
   }, 1000);
 
-  // Polling dự phòng khi WebSocket bận hoặc tạm nghẽn
+  // 4. Đồng bộ trạng thái thiết bị định kỳ mỗi 5 giây
   setInterval(() => {
-    if (Date.now() - lastWsSensorUpdate > 4000 && !isDashboardCurrentlyOffline) {
-      fetchRealtimeSensors(false);
+    if (!isDashboardCurrentlyOffline) {
+      syncDevicesFromServer(true);
     }
-  }, 2000);
+  }, 5000);
 
   const filterSelect = document.getElementById('chart-filter-select');
   if (filterSelect) {
@@ -892,6 +876,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.visibilityState === 'visible') {
       if (!isDashboardCurrentlyOffline) {
         fetchRealtimeSensors(true);
+        syncDevicesFromServer(false);
       }
     }
   });

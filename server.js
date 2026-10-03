@@ -2,21 +2,17 @@ require('dotenv').config();
 const http = require('http');
 const app = require('./src/app');
 const { testDbConnection } = require('./src/config/database');
-const { initWebSocket } = require('./src/config/websocket');
 const { initMqtt } = require('./src/config/mqtt');
 
 const PORT = parseInt(process.env.PORT, 10) || 5000;
 
-// 1. Khởi tạo HTTP Server từ Express App
+// 1. Khởi tạo HTTP Server từ Express App (RESTful API)
 const server = http.createServer(app);
 
-// 2. Khởi tạo WebSocket Server gắn liền với HTTP Server
-initWebSocket(server);
-
-// 3. Khởi động Server lắng nghe trên PORT
+// 2. Khởi động Server lắng nghe trên PORT
 server.listen(PORT, async () => {
   console.log(`🚀 IoT Central Server (Enterprise Backend) đang chạy tại: http://localhost:${PORT}`);
-  console.log(`📡 Chế độ: MySQL (${process.env.DB_NAME || 'iot_monitor'}) + MQTT Local (Port: ${process.env.MQTT_PORT || 6767}) + WebSocket Realtime`);
+  console.log(`📡 Chế độ: MySQL (${process.env.DB_NAME || 'iot_monitor'}) + MQTT Local (Port: ${process.env.MQTT_PORT || 6767}) + RESTful API Polling (Chu kỳ 2s)`);
   console.log(`👨‍💻 Tác giả: Nguyễn Đức Mạnh - B23DCCN532 - Lớp B23CNPM06`);
 
   // Kiểm tra kết nối cơ sở dữ liệu MySQL
