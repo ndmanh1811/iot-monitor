@@ -46,10 +46,10 @@ function initMqtt() {
       isMqttBrokerConnected = true;
       console.log(`✅ [MQTT] Đã kết nối Broker thành công tại: mqtt://${host}:${port} (User: ${username})`);
 
-      // Đăng ký toàn bộ topic
+      // Đăng ký lắng nghe toàn bộ topic (#) bao gồm: sensor_data, device_control, device_response
       mqttClient.subscribe('#', (err) => {
         if (!err) {
-          console.log('📡 [MQTT] Đã đăng ký lắng nghe toàn bộ topic (#)');
+          console.log('📡 [MQTT] Đã đăng ký lắng nghe 3 topic chính: "sensor_data", "device_control", "device_response" (Pattern: #)');
         }
       });
     });
@@ -97,45 +97,98 @@ function parseMqttJson(raw) {
     mqttClient.on('message', async (topic, message) => {
       try {
         const raw = message.toString();
-        console.log(`📡 [MQTT Inbound] Topic: ${topic} | Payload: ${raw}`);
+        console.log(`📡 [MQTT Inbound] Topic: "${topic}" | Payload: ${raw}`);
         const data = parseMqttJson(raw);
         if (!data || typeof data !== 'object') {
           console.warn('⚠️ [MQTT] Gói tin không thể parse JSON:', raw);
           return;
         }
 
-        // 1. Xử lý bản tin phản hồi (ACK) từ ESP8266 khi nhận lệnh điều khiển
-        if (topic === 'iot/devices/response' || topic === 'device_response') {
-          console.log(`📥 [MQTT ➔ Server] ESP8266 phản hồi ACK: Request ${data.request_id} | Status: ${data.status} | Pin: ${data.pin} | State: ${data.state}`);
-          const ackStatus = data.status === 'SUCCESS' ? 'SUCCESS' : 'FAILED';
+        // 1. TOPIC: device_control - Bỏ qua bản tin lệnh phát đi (do Backend phát ra)
+        if (topic === 'device_control' || topic.startsWith('device_control/') || topic === 'iot/devices/control') {
+          return;
+        }
 
-          if (data.request_id && pool) {
+        // 2. TOPIC: device_response - Xử lý phản hồi trạng thái từ phần cứng ESP8266 / CMD
+        if (topic === 'device_response' || topic.startsWith('device_response/') || topic === 'iot/devices/response') {
+          console.log(`📥 [MQTT ➔ Server] Nhận phản hồi tại topic "${topic}":`, data);
+
+          // Trường hợp 2A: Payload chứa các trường led1, led2, led3 theo định dạng của thầy
+          const ledMap = [
+            { key: 'led1', id: 1, code: '#LED-01', name: 'Đèn LED', type: 'led' },
+            { key: 'led2', id: 2, code: '#AC-01', name: 'Điều hòa', type: 'ac' },
+            { key: 'led3', id: 3, code: '#FAN-01', name: 'Quạt', type: 'fan' }
+          ];
+
+          let matchedLed = false;
+          for (const item of ledMap) {
+            if (data[item.key] !== undefined) {
+              matchedLed = true;
+              const val = String(data[item.key]).toUpperCase();
+              const state = (val === 'ON' || val === '1' || val === 'TRUE') ? 'ON' : 'OFF';
+
+              if (pool) {
+                // Cập nhật trạng thái thiết bị trong MySQL
+                await pool.query('UPDATE devices SET current_state = ?, updated_at = NOW() WHERE id = ?', [state, item.id]);
+
+                // Chốt lệnh PENDING gần nhất nếu có
+                const [pending] = await pool.query(
+                  "SELECT id, request_id FROM action WHERE device_id = ? AND status = 'PENDING' ORDER BY id DESC LIMIT 1",
+                  [item.id]
+                );
+
+                if (pending.length > 0) {
+                  await pool.query("UPDATE action SET status = 'SUCCESS' WHERE id = ?", [pending[0].id]);
+                  console.log(`✅ [MQTT ➔ MySQL] Chốt lệnh ${pending[0].request_id} thành công cho ${item.name} ➔ Trạng thái: ${state}`);
+                } else {
+                  // Phản hồi từ nút bấm vật lý trên mạch hoặc test trực tiếp bằng CMD
+                  const hwReqId = `HW_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+                  await pool.query(
+                    `INSERT INTO action (request_id, device_id, device_code, device_name, device_type, action, status, operator_name, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, 'SUCCESS', 'Phần cứng ESP8266/CMD', NOW())`,
+                    [hwReqId, item.id, item.code, item.name, item.type, state]
+                  );
+                  console.log(`✅ [MQTT ➔ MySQL] Ghi nhận trạng thái phần cứng trực tiếp: ${item.name} ➔ ${state}`);
+                }
+              }
+            }
+          }
+
+          // Trường hợp 2B: Payload chứa request_id (phản hồi ACK theo chuẩn Server)
+          if (!matchedLed && data.request_id && pool) {
+            const ackStatus = (data.status === 'SUCCESS' || data.status === 'OK' || data.state) ? 'SUCCESS' : 'FAILED';
             try {
               await pool.query('UPDATE action SET status = ? WHERE request_id = ?', [ackStatus, data.request_id]);
-              if (data.device_id && data.status === 'SUCCESS' && (data.state === 'ON' || data.state === 'OFF')) {
+              if (data.device_id && ackStatus === 'SUCCESS' && (data.state === 'ON' || data.state === 'OFF')) {
                 await pool.query('UPDATE devices SET current_state = ? WHERE id = ?', [data.state, data.device_id]);
               }
+              console.log(`✅ [MQTT ➔ MySQL] Phản hồi ACK cho Request ${data.request_id} ➔ ${ackStatus}`);
             } catch (dbErr) {
               console.error('❌ [Database] Lỗi cập nhật ACK:', dbErr.message);
+            }
+          }
+
+          // Trường hợp 2C: Payload chứa device_id và state trực tiếp
+          if (!matchedLed && !data.request_id && data.device_id && pool) {
+            const state = String(data.state || data.action || data.status || '').toUpperCase();
+            if (state === 'ON' || state === 'OFF') {
+              await pool.query('UPDATE devices SET current_state = ? WHERE id = ?', [state, data.device_id]);
             }
           }
           return;
         }
 
-        if (topic === 'iot/devices/control' || topic === 'device_control') {
-          return; // Bỏ qua topic phát lệnh
-        }
-
-        // 2. Xử lý bản tin dữ liệu đo từ cảm biến (topic: iot/sensors/data hoặc tương tự)
-        let temp = data.temperature ?? data.temp;
-        let humi = data.humidity ?? data.humi;
-        let light = data.light ?? data.lux;
+        // 3. TOPIC: sensor_data (hoặc sensor_data/+ như sensor_data/room_101, iot/sensors/data)
+        // Xử lý bản tin dữ liệu đo từ cảm biến
+        let temp = data.temp ?? data.temperature;
+        let humi = data.humi ?? data.huni ?? data.humidity; // hỗ trợ cả 'huni' theo định dạng đề bài của thầy
+        let light = data.light ?? data.lux ?? data.anh_sang;
 
         if (Array.isArray(data.readings)) {
           data.readings.forEach(r => {
             const st = (r.sensor_type || '').toUpperCase();
             if (st === 'TEMP' || st === 'TEMPERATURE') temp = r.value;
-            if (st === 'HUMI' || st === 'HUMIDITY') humi = r.value;
+            if (st === 'HUMI' || st === 'HUMIDITY' || st === 'HUNI') humi = r.value;
             if (st === 'LIGHT' || st === 'LUX') light = r.value;
           });
         }
@@ -144,7 +197,6 @@ function parseMqttJson(raw) {
           return;
         }
 
-        // Lưu đúng mốc thời gian thực tế tự nhiên lúc nhận tin (hoặc timestamp của thiết bị nếu có)
         const now = (data.timestamp && !isNaN(new Date(data.timestamp).getTime())) 
           ? new Date(data.timestamp) 
           : new Date();
@@ -213,7 +265,7 @@ function parseMqttJson(raw) {
           }
         }
 
-        console.log(`📥 [MQTT ➔ MySQL] Nhận từ ESP8266: Nhiệt độ ${temp}°C | Độ ẩm ${humi}% | Ánh sáng ${light} Lux ➔ Đã lưu thành công vào MySQL!`);
+        console.log(`📥 [MQTT ➔ MySQL] Topic: "${topic}" | Nhiệt độ ${temp}°C | Độ ẩm ${humi}% | Ánh sáng ${light} Lux ➔ Đã lưu thành công vào MySQL!`);
       } catch (err) {
         console.error('❌ [MQTT] Lỗi xử lý bản tin cảm biến:', err.message);
       }
