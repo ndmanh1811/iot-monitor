@@ -44,29 +44,18 @@ async function controlDevice(deviceId, action, operator = 'Nguyễn Đức Mạn
   }
 
   // 3. Đóng gói lệnh và gửi qua MQTT tới ESP8266 với QoS 1
-  let ledKey = `led${dev.id}`;
-  if (dev.id === 1) ledKey = 'led1';
-  else if (dev.id === 2) ledKey = 'led2';
-  else if (dev.id === 3) ledKey = 'led3';
-
   const controlPayload = {
-    room_id: 'room_101',
-    [ledKey]: action.toLowerCase(),
-    action: action,
     device_id: dev.id,
     device_code: dev.device_code,
-    device_name: dev.name,
     pin: pinNum,
+    action: action,
     request_id: requestId,
     timestamp: now.toISOString()
   };
 
   try {
-    // Topic chính thức chuẩn theo yêu cầu: device_control
-    await publishMessage('device_control', controlPayload, 1);
-    // Hỗ trợ đồng thời topic phụ iot/devices/control
-    publishMessage('iot/devices/control', controlPayload, 1).catch(() => {});
-    console.log(`📤 [MQTT ➔ ESP8266] Bắn lệnh điều khiển topic "device_control" ➔ ${dev.name} (${ledKey}: ${action}, Pin ${pinNum})`);
+    await publishMessage('iot/devices/control', controlPayload, 1);
+    console.log(`📤 [MQTT ➔ ESP8266] Bắn lệnh điều khiển: Topic iot/devices/control ➔ ${dev.name} (Pin ${pinNum}, ${action})`);
   } catch (err) {
     console.warn('⚠️ [MQTT] Không thể gửi lệnh tới Broker:', err.message);
   }
