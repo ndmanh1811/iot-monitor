@@ -73,19 +73,39 @@ function initMqtt() {
       console.warn(`⚠️ [MQTT] Broker port ${port}: ${err.message}`);
     });
 
+function parseMqttJson(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    try {
+      let normalized = raw.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
+      normalized = normalized.replace(/:\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*([,}])/g, (match, val, ending) => {
+        if (['true', 'false', 'null'].includes(val.toLowerCase())) {
+          return `:${val.toLowerCase()}${ending}`;
+        }
+        return `:"${val}"${ending}`;
+      });
+      normalized = normalized.replace(/'/g, '"');
+      return JSON.parse(normalized);
+    } catch (e2) {
+      return null;
+    }
+  }
+}
+
     // Lắng nghe và xử lý toàn bộ bản tin nhận từ Broker
     mqttClient.on('message', async (topic, message) => {
       try {
         const raw = message.toString();
-        let data = {};
-        try {
-          data = JSON.parse(raw);
-        } catch (e) {
+        console.log(`📡 [MQTT Inbound] Topic: ${topic} | Payload: ${raw}`);
+        const data = parseMqttJson(raw);
+        if (!data || typeof data !== 'object') {
+          console.warn('⚠️ [MQTT] Gói tin không thể parse JSON:', raw);
           return;
         }
 
         // 1. Xử lý bản tin phản hồi (ACK) từ ESP8266 khi nhận lệnh điều khiển
-        if (topic === 'iot/devices/response') {
+        if (topic === 'iot/devices/response' || topic === 'device_response') {
           console.log(`📥 [MQTT ➔ Server] ESP8266 phản hồi ACK: Request ${data.request_id} | Status: ${data.status} | Pin: ${data.pin} | State: ${data.state}`);
           const ackStatus = data.status === 'SUCCESS' ? 'SUCCESS' : 'FAILED';
 
@@ -102,7 +122,7 @@ function initMqtt() {
           return;
         }
 
-        if (topic === 'iot/devices/control') {
+        if (topic === 'iot/devices/control' || topic === 'device_control') {
           return; // Bỏ qua topic phát lệnh
         }
 
