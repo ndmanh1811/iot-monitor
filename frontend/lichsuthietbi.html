@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Lịch sử thiết bị - IoT Monitor</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <!-- Google Fonts: Inter -->
+  <link href="https://fonts.googleapis.com" rel="preconnect">
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .table-row-hover:hover {
+      background-color: #f8fafc;
+      transition: all 0.2s ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-[#f8fafc] text-slate-800 antialiased h-screen overflow-hidden flex selection:bg-blue-100 selection:text-blue-700">
+
+  <!-- BEGIN: Sidebar -->
+  <aside class="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 h-screen sticky top-0 z-30">
+    <div>
+      <!-- Brand Logo -->
+      <div class="px-6 py-6 border-b border-slate-100 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <span class="block font-bold text-slate-900 tracking-tight text-lg leading-tight">IoT Monitor</span>
+          <span class="text-xs text-slate-500 font-medium">Giám sát thông minh</span>
+        </div>
+      </div>
+
+      <!-- Navigation Links -->
+      <nav aria-label="Menu chính" class="p-4 space-y-1.5">
+        <!-- Tổng quan -->
+        <a href="tongquan.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium text-sm transition-colors group">
+          <svg class="w-5 h-5 text-slate-400 group-hover:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+          </svg>
+          <span>Tổng quan</span>
+        </a>
+
+        <!-- Dữ liệu cảm biến -->
+        <a href="dulieucambien.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium text-sm transition-colors group">
+          <svg class="w-5 h-5 text-slate-400 group-hover:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+          </svg>
+          <span>Dữ liệu cảm biến</span>
+        </a>
+
+        <!-- Lịch sử (ACTIVE) -->
+        <a href="lichsuthietbi.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg bg-blue-50 text-blue-600 font-semibold text-sm transition-colors relative shadow-sm">
+          <span class="absolute left-0 top-1.5 bottom-1.5 w-1 bg-blue-600 rounded-r-full"></span>
+          <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Lịch sử</span>
+        </a>
+
+        <!-- Hồ sơ -->
+        <a href="hosocanhan.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium text-sm transition-colors group">
+          <svg class="w-5 h-5 text-slate-400 group-hover:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span>Hồ sơ</span>
+        </a>
+      </nav>
+    </div>
+
+  </aside>
+  <!-- END: Sidebar -->
+
+  <!-- Main Content Area -->
+  <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+    <!-- Header -->
+    <header class="h-14 px-6 flex items-center justify-between border-b border-slate-200/80 bg-white shrink-0 z-20">
+      <div class="flex items-center gap-3">
+        <!-- Status chips -->
+        <span id="esp-status-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          ESP8266 Online (MQTT)
+        </span>
+      </div>
+
+      <!-- User Profile Header -->
+      <div class="flex items-center gap-3">
+        <div class="text-right leading-tight hidden sm:block">
+          <p id="header-user-name" class="text-xs font-semibold text-slate-800">Nguyễn Đức Mạnh</p>
+          <p id="header-user-email" class="text-[11px] text-slate-400">manhnd.b23cn532@stu.ptit.edu.vn</p>
+        </div>
+        <div class="relative">
+          <div class="w-8 h-8 rounded-full ring-2 ring-slate-100 overflow-hidden bg-slate-100 flex items-center justify-center">
+            <img id="header-user-avatar-img" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA1B3RJWDc_3dQEEBgIUv0hdwEPr3Ap-y45ELTvPUxglRnghH2VIhoUS6OPz29XAajIrpv4E5weVLBssIs22TmlUftW1dRcRfYX1yUHbOH4IgyMrMqTD17GwBJ4AHgcTJzMJGNlIIDMD33jzbRfcjjjExFQlJv_N3qgqiZkmblRUwaXTHMHMkTmha-s4wLLm2c5muhGF8mpmSZeyAG29GZRKzEqiwU-ai0hri4_gIj0HRdjMcpTGB-9qNDADC9pAJjkbazlwWC6GikEqA" alt="Avatar">
+          </div>
+          <span class="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace Content -->
+    <main class="flex-1 px-6 py-3 flex flex-col min-h-0 overflow-hidden max-w-7xl mx-auto w-full gap-2.5">
+      <!-- Page Title -->
+      <section class="shrink-0 flex items-center justify-between">
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 tracking-tight leading-none">Lịch sử thiết bị</h1>
+        </div>
+      </section>
+
+      <!-- Table Card -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden">
+        <!-- Card Header / Filters -->
+        <div class="p-3 border-b border-slate-200 bg-white shrink-0">
+          <!-- Filter Form -->
+          <form onsubmit="handleHistoryFilter(event)" class="flex flex-wrap items-end gap-2.5">
+              <!-- Tên thiết bị -->
+              <div class="flex flex-col gap-1 flex-1 min-w-[120px]">
+                <label class="text-[11px] font-semibold text-slate-600">Tên thiết bị</label>
+                <select id="filter-history-device" class="w-full h-8 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-600 outline-none cursor-pointer">
+                  <option value="">Tất cả thiết bị</option>
+                  <option value="led">Đèn LED</option>
+                  <option value="ac">Điều hòa</option>
+                  <option value="fan">Quạt</option>
+                </select>
+              </div>
+
+              <!-- Thiết bị ID -->
+              <div class="flex flex-col gap-1 flex-1 min-w-[120px]">
+                <label class="text-[11px] font-semibold text-slate-600">Thiết bị ID</label>
+                <input id="filter-history-id" class="w-full h-8 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-600 outline-none placeholder-slate-400" placeholder="VD: #LED-01 hoặc #AC-01" type="text">
+              </div>
+
+              <!-- Hành động -->
+              <div class="flex flex-col gap-1 flex-1 min-w-[110px]">
+                <label class="text-[11px] font-semibold text-slate-600">Hành động</label>
+                <select id="filter-history-action" class="w-full h-8 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-600 outline-none cursor-pointer">
+                  <option value="">Tất cả hành động</option>
+                  <option value="on">Bật</option>
+                  <option value="off">Tắt</option>
+                </select>
+              </div>
+
+              <!-- Trạng thái -->
+              <div class="flex flex-col gap-1 flex-1 min-w-[120px]">
+                <label class="text-[11px] font-semibold text-slate-600">Trạng thái</label>
+                <select id="filter-history-status" class="w-full h-8 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-600 outline-none cursor-pointer">
+                  <option value="">Tất cả trạng thái</option>
+                  <option value="SUCCESS">Thành công</option>
+                  <option value="FAILED">Thất bại</option>
+                  <option value="PENDING">Đang xử lý</option>
+                </select>
+              </div>
+
+              <!-- Thời gian -->
+              <div class="flex flex-col gap-1 flex-1 min-w-[140px]">
+                <label class="text-[11px] font-semibold text-slate-600">Thời gian</label>
+                <input id="filter-history-time" class="w-full h-8 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-600 outline-none placeholder-slate-400" placeholder="YYYY/MM/DD HH:mm:ss" type="text">
+              </div>
+
+              <!-- Nút bấm -->
+              <div class="flex items-center gap-2 self-end shrink-0">
+                <button onclick="resetHistoryFilters()" class="h-8 px-3 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition cursor-pointer" type="button">
+                  Xóa bộ lọc
+                </button>
+                <button class="h-8 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center justify-center transition shadow-sm cursor-pointer" type="submit">
+                  <span>Áp dụng tìm kiếm</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Table -->
+          <div class="overflow-x-auto flex-1 min-h-0 overflow-y-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50/95 sticky top-0 border-b border-slate-200 text-xs font-semibold text-slate-500 select-none z-10">
+                  <th onclick="sortHistory('id')" class="py-2.5 px-5 w-20 text-center cursor-pointer hover:text-blue-600 transition-colors" scope="col">
+                    <div class="flex items-center justify-center gap-1.5">
+                      <span>ID</span>
+                      <span id="sort-icon-hist-id" class="text-xs text-slate-400 font-bold">↕</span>
+                    </div>
+                  </th>
+                  <th onclick="sortHistory('device_id')" class="py-2.5 px-5 cursor-pointer hover:text-blue-600 transition-colors" scope="col">
+                    <div class="flex items-center gap-1.5">
+                      <span>Mã thiết bị</span>
+                      <span id="sort-icon-hist-dev-id" class="text-xs text-slate-400 font-bold">↕</span>
+                    </div>
+                  </th>
+                  <th class="py-2.5 px-5 text-slate-500 font-semibold" scope="col">
+                    <span>Thiết bị</span>
+                  </th>
+                  <th class="py-2.5 px-5 text-slate-500 font-semibold" scope="col">
+                    <span>Người điều khiển</span>
+                  </th>
+                  <th class="py-2.5 px-5 text-slate-500 font-semibold" scope="col">
+                    <span>Hành động</span>
+                  </th>
+                  <th class="py-2.5 px-5 text-slate-500 font-semibold" scope="col">
+                    <span>Trạng thái</span>
+                  </th>
+                  <th onclick="sortHistory('created_at')" class="py-2.5 px-5 cursor-pointer hover:text-blue-600 transition-colors text-right" scope="col">
+                    <div class="flex items-center justify-end gap-1.5">
+                      <span>Thời gian</span>
+                      <span id="sort-icon-hist-time" class="text-xs text-slate-400 font-bold">↕</span>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body" class="divide-y divide-slate-100 text-xs">
+                <!-- Dynamic via js/history.js -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="py-2.5 px-6 bg-slate-50/90 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-medium shrink-0">
+            <div class="flex items-center gap-2">
+              <span>Hiển thị</span>
+              <select onchange="changeHistoryLimit(this.value)" class="bg-white border border-slate-200 text-slate-700 text-xs rounded py-0.5 px-2 focus:border-blue-600 outline-none cursor-pointer">
+                <option selected="" value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+              <span>bản ghi/trang</span>
+              <span class="text-slate-300">•</span>
+              <span>Tổng số <span id="total-history-count" class="font-semibold text-slate-800">10</span> kết quả</span>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <button id="history-btn-prev" onclick="prevHistoryPage()" class="px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-colors cursor-pointer">Trước</button>
+              <div id="history-pagination-numbers" class="flex items-center gap-1"></div>
+              <button id="history-btn-next" onclick="nextHistoryPage()" class="px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer">Tiếp theo</button>
+            </div>
+          </div>
+        </div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/colors.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/history.js"></script>
+</body>
+</html>

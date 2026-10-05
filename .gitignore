@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Environment Variables & Private Credentials
+.env
+.env.local
+.env.*.local
+
+# IDE & Editor Settings
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & Temporary Files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+scratch/
+
+# ===================================================
+# Tài liệu đề tài, báo cáo, thiết kế & ảnh trích xuất
+# (Chỉ commit mã nguồn dự án)
+# ===================================================
+*.docx
+*.pdf
+extracted_images/
+baocaomoi/
+SRS (1)/
+thietkefigma/
+baocaoIOT-1.md
+HUONG_DAN_POSTMAN_VA_API.md
+IoT_Monitor_Postman_Collection.json
+PHAN_TICH_PROJECT_VA_GIAI_DAP.md
+giai_thich_controllers.md
+giai_thich_mqtt.md
+kichban.md
+tat_ca_cac_luong_he_thong.md
+huongdanapi.md
